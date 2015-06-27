@@ -1,0 +1,69 @@
+# Ignore all files that generally ought not to be committed into the repo.
+# Never commit sensitive data.
+# Never commit useless files.
+# Try not to commit large files.
+
+# Filenames should NOT have spaces
+* *
+
+# Ignore byte-compiled / optimised / DLL files
+*.py[cod]
+
+# Ignore SQLite3 files. Gramex creates some automatically
+*.sqlite3
+*.sqlite3-journal
+
+# Cache folders. Gramex creates these with --filecache
+.cache/
+
+# Old vis.py used to produce xhtml output. Ignore these
+*.xhtml
+
+# Data files. Try not to commit data into the repo
+*.csv
+*.dat
+*.mdb
+
+# Zip files that aren't read by Pandas
+*.7z
+*.zip
+
+# Documents
+*.doc*
+*.pdf
+*.ppt*
+*.xls*
+
+# Avoid media files
+*.avi
+*.mp*
+*.wmv
+
+# Backup files
+~$*
+*~
+*.bak*
+
+# Sublime-text workspaces, etc
+*.sublime-*
+
+# IPython Notebook checkpoints
+.ipynb_checkpoints
+
+# Typically bash.exe.stackdump on Cygwin
+*.stackdump
+
+# Node modules
+node_modules/
+
+# Windows shortcut files
+*.lnk
+
+# Windows / Mac OS junk files
+Desktop.ini
+$RECYCLE.BIN/
+*[Tt]humbs.db
+*.DS_Store
+
+# R history files
+.RHistory
