@@ -4,55 +4,63 @@ import asyncio
 import aiohttp
 import logging
 from hashlib import md5
-from functools import wraps
 from lxml.html import parse
 from urllib.parse import urljoin
 from urllib.error import HTTPError
 from collections import OrderedDict
 
-if not os.path.exists('.cache'):
-    os.makedirs('.cache')
 
-get_total, get_count, get_limit = 0, 0, 2
+def getter(limit, cache=None, delay=0.1):
+    '''
+    Return a function that asynchronously gets a URL, up to `limit` in parallel,
+    and saves the result in the `cache` folder as a binary file.
+
+        >>> get = getter(10, cache='.cache', delay=0.1)
+        >>> filename = get(url)
+    '''
+    get_total, get_count = 0, 0
+    if cache is not None and not os.path.exists(cache):
+        os.makedirs(cache)
+
+    @asyncio.coroutine
+    def get(url):
+        '''Returns the lxml tree of a URL, loading fom a cache'''
+
+        # We'll cache the file in .cache/<md5(URL)>
+        path = os.path.join(cache, md5(url.encode('utf-8')).hexdigest())
+
+        # If the URL is not already cached, get it and cache it.
+        if not os.path.exists(path):
+            # Never run more than limit GET requests at a time.
+            # Keep releasing control and re-checking periodically until we're
+            # below limit running GET requests.
+            nonlocal get_count, get_total
+            while get_count >= limit:
+                yield from asyncio.sleep(delay)
+
+            # Now, let's actually get the URL. get_count has the number of running
+            # GET requests. get_total is the cumulative count of GET requests.
+            get_count, get_total = get_count + 1, get_total + 1
+            logging.info('Task# %d (total: %d). %s', get_count, get_total, url)
+            response = yield from aiohttp.request('GET', url=url)
+            get_count -= 1
+
+            # Save the response fully (without decoding) into the cache
+            if response.status == 200:
+                result = yield from response.read_and_close()
+                with open(path, 'wb') as handle:
+                    handle.write(result)
+            else:
+                raise HTTPError(response.status)
+
+        # By now, the URL is cached in path. Return the lxml tree
+        return parse(path)
+
+    return get
 
 
 @asyncio.coroutine
-def get(url):
-    '''Returns the lxml tree of a URL, loading fom a cache'''
-
-    # We'll cache the file in .cache/<md5(URL)>
-    path = os.path.join('.cache', md5(url.encode('utf-8')).hexdigest())
-
-    # If the URL is not already cached, get it and cache it.
-    if not os.path.exists(path):
-        # Never run more than get_limit GET requests at a time.
-        # Keep releasing control and re-checking periodically until we're
-        # below get_limit running GET requests.
-        global get_count, get_total
-        while get_count >= get_limit:
-            yield from asyncio.sleep(0.1)
-
-        # Now, let's actually get the URL. get_count has the number of running
-        # GET requests. get_total is the cumulative count of GET requests.
-        get_count, get_total = get_count + 1, get_total + 1
-        logging.info('Task# %d (total: %d). %s', get_count, get_total, url)
-        response = yield from aiohttp.request('GET', url=url)
-        get_count -= 1
-
-        # Save the response fully (without decoding) into the cache
-        if response.status == 200:
-            result = yield from response.read_and_close()
-            with open(path, 'wb') as handle:
-                handle.write(result)
-        else:
-            raise HTTPError(response.status)
-
-    # By now, the URL is cached in path. Return the lxml tree
-    return parse(path)
-
-
-@asyncio.coroutine
-def scrape():
+def scrape(get):
     '''Scrape the Texas Death Row list and summarise into deathrow.csv'''
 
     # Get all the information you can from the main index page
@@ -73,7 +81,7 @@ def scrape():
             ('county', cells[9].text),
         )))
 
-    # Get all the last word links -- asynchronously. Up to get_limit requests
+    # Get all the last word links -- asynchronously. Up to limit requests
     # will be fired off without waiting for the response. As the responses
     # arrive, more requests will be fired. This line will block until all
     # responses are received.
@@ -96,10 +104,11 @@ def scrape():
         out.writeheader()
         out.writerows(rows)
 
+
 # Log all information requests
 logging.basicConfig(level=logging.INFO)
 
 # Start the main event loop and run the scrape() function
 loop = asyncio.get_event_loop()
-loop.run_until_complete(scrape())
+loop.run_until_complete(scrape(get=getter(limit=2, cache='.cache')))
 loop.close()
